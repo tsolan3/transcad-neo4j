@@ -1,0 +1,5 @@
+LinkTypeId,LinkTypeName,Speed,Capacity
+1026,bus,18,50000
+1032,tramway,21,50000
+1034,tramway+bus,21,50000
+2048,Connector,3,50000

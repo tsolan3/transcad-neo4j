@@ -91,7 +91,6 @@ def add_edges(G, json_data):
                 G.add_edge(node2, node1, length=rel['length'])
     return True
 
-
 if __name__ == '__main__':
     G = nx.MultiDiGraph()
     add_nodes(G, get_json_data_nodes())

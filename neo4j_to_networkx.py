@@ -1,7 +1,10 @@
 import time
+
+from itertools import islice
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
 import networkx as nx
-
+import matplotlib.pyplot as plt
+import gmplot
 
 def connect_graph():
     graph = Graph("http://localhost:7474/db/data/", user='neo4j', password='119678Qq')
@@ -72,7 +75,8 @@ def add_rels(G, rel_data):
             null_time=rel['null_time'],
             time_bus=rel['time_bus'],
             time_tram=rel['time_tram'],
-            speed=rel['speed']
+            speed=rel['speed'],
+            time=rel['length']/rel['speed']
         )
     return True
 
@@ -86,6 +90,39 @@ if __name__ == '__main__':
     print(G.number_of_edges())
     print(G.number_of_nodes())
     start_time = time.time()
-    print(nx.shortest_path(G, 4641, 12045, weight='length'))
+    path = nx.all_simple_paths(G, 4641, 12045, 4, weight='time')
     print("--- %s seconds ---" % (time.time() - start_time))
+    print(list(path))
 
+    # latitude_list = []
+    # longitude_list = []
+    # for node in path:
+    #     latitude_list.append(G.nodes[node]['latitude'])
+    #     longitude_list.append(G.nodes[node]['longitude'])
+    #
+    # gmap3 = gmplot.GoogleMapPlotter(30.3164945,
+    #                                 78.03219179999999, 13)
+    # gmap3.apikey = "AIzaSyDhTPZ5IYv_a3MiROTVnYFh5tOldK8XUiE"
+    #
+    #
+    # # scatter method of map object
+    # # scatter points on the google map
+    # gmap3.scatter(latitude_list, longitude_list, '# FF0000',
+    #               size=15, marker=False)
+    #
+    # # Plot method Draw a line in
+    # # between given coordinates
+    # gmap3.plot(latitude_list, longitude_list,
+    #            'cornflowerblue', edge_width=2.5)
+    #
+    # # Pass the absolute path
+    # gmap3.draw("map11.html")
+    #
+    # # coords = []
+    # # for node in path:
+    # #     plt.plot(G.nodes[node]['latitude'], G.nodes[node]['longitude'], 'ro')
+    # # plt.show()
+    #
+    #     # coords.append({'pk': node, 'lat': G.node(node)['latitude'], 'lng': G.node(node)['longitude']})
+    # # print(coords)
+    #

@@ -1,10 +1,15 @@
 import time
+import itertools
+import uuid
 
 from itertools import islice
+from pprint import pprint
+
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
 import networkx as nx
 import matplotlib.pyplot as plt
 import gmplot
+
 
 def connect_graph():
     graph = Graph("http://localhost:7474/db/data/", user='neo4j', password='119678Qq')
@@ -56,7 +61,8 @@ def get_rels_from_db(graph):
 
 def add_nodes(G, nodes_data):
     for node in nodes_data:
-        G.add_node(node['pk'], longitude=node['longitude'], latitude=node['latitude'])
+        G.add_node(node['pk'], longitude=node['longitude'], latitude=node['latitude'],
+                   node_pk=node['pk'], type='coord')
     return True
 
 
@@ -76,9 +82,64 @@ def add_rels(G, rel_data):
             time_bus=rel['time_bus'],
             time_tram=rel['time_tram'],
             speed=rel['speed'],
-            time=rel['length']/rel['speed']
+            time=rel['length']/rel['speed'],
+            type='link'
         )
     return True
+
+
+def get_penalties_data():
+    with open('transcad_data/penalties.csv', 'r') as f:
+        json_data = []
+        for line in f.readlines():
+            data = line.split(',')
+            # if data[0] != '' or data[1]
+            json_obj = {'link_type_id_1': int(data[0]), 'link_type_id_2': int(data[1]),
+                        'normal_penalty': int(data[2]), 'u_turn_penalty': int(data[3])}
+            json_data.append(json_obj)
+        return json_data
+
+
+def add_penalties(graph):
+    penalties = get_penalties_data()  # данные о штрафах из файла
+    coordinate_nodes = [(x, y) for x, y in graph.nodes(data=True) if y['type'] == 'coord']
+
+    for node in coordinate_nodes:
+        in_edges = graph.in_edges(node[0], data=True)  # для каждой координатной точки ищем входящие и выходящие ребра
+        out_edges = graph.out_edges(node[0], data=True)
+        edge_pairs = list(itertools.product(in_edges, out_edges))  # находим пары ребер
+        edge_pair_id = 0
+        for edge_pair in edge_pairs:
+            edge_pair_id += 1
+            in_edge_link_type = edge_pair[0][2]['link_type_id']
+            out_edge_link_type = edge_pair[1][2]['link_type_id']
+            for data in penalties:
+                if [in_edge_link_type, out_edge_link_type] == [data['link_type_id_1'], data['link_type_id_2']]:
+                        # and data['normal_penalty'] != 0:
+                    graph.add_node(f'{node[0]}_in_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+                    graph.add_node(f'{node[0]}_out_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+                    graph.add_edge(f'{node[0]}_in_{edge_pair_id}', f'{node[0]}_out_{edge_pair_id}',
+                                   time=data['normal_penalty'], type='penalty_edge')
+                    graph.add_edge(edge_pair[0][0], f'{node[0]}_{edge_pair_id}_1', **edge_pair[0][2])
+                    graph.add_edge(f'{node[0]}_{edge_pair_id}_2', edge_pair[1][1], **edge_pair[1][2])
+        graph.remove_node(node[0])
+    # pprint(list(graph.edges(data=True)))
+
+
+def get_shortest_path(graph, node_pk_from, node_pk_to):
+    nodes_from = [x for x, y in graph.nodes(data=True) if f'{node_pk_from}_out' in x]
+    nodes_to = [x for x, y in graph.nodes(data=True) if f'{node_pk_to}_in' in x]
+    node_pairs = list(itertools.product(nodes_from, nodes_to))
+
+    shortest_paths = []
+    for node_pair in node_pairs:
+        try:
+            sp = nx.shortest_path(graph, node_pair[0], node_pair[1], weight=time)
+            shortest_paths.append(sp)
+        except Exception:
+            continue
+
+    return max(shortest_paths)
 
 
 if __name__ == '__main__':
@@ -87,42 +148,19 @@ if __name__ == '__main__':
     add_nodes(G, get_nodes_from_db(neo4j_graph))
     add_rels(G, get_rels_from_db(neo4j_graph))
 
-    print(G.number_of_edges())
-    print(G.number_of_nodes())
-    start_time = time.time()
-    path = nx.all_simple_paths(G, 4641, 12045, 4, weight='time')
-    print("--- %s seconds ---" % (time.time() - start_time))
-    print(list(path))
+    print('edges', G.number_of_edges())
+    print('nodes', G.number_of_nodes())
 
-    # latitude_list = []
-    # longitude_list = []
-    # for node in path:
-    #     latitude_list.append(G.nodes[node]['latitude'])
-    #     longitude_list.append(G.nodes[node]['longitude'])
-    #
-    # gmap3 = gmplot.GoogleMapPlotter(30.3164945,
-    #                                 78.03219179999999, 13)
-    # gmap3.apikey = "AIzaSyDhTPZ5IYv_a3MiROTVnYFh5tOldK8XUiE"
-    #
-    #
-    # # scatter method of map object
-    # # scatter points on the google map
-    # gmap3.scatter(latitude_list, longitude_list, '# FF0000',
-    #               size=15, marker=False)
-    #
-    # # Plot method Draw a line in
-    # # between given coordinates
-    # gmap3.plot(latitude_list, longitude_list,
-    #            'cornflowerblue', edge_width=2.5)
-    #
-    # # Pass the absolute path
-    # gmap3.draw("map11.html")
-    #
-    # # coords = []
-    # # for node in path:
-    # #     plt.plot(G.nodes[node]['latitude'], G.nodes[node]['longitude'], 'ro')
-    # # plt.show()
-    #
-    #     # coords.append({'pk': node, 'lat': G.node(node)['latitude'], 'lng': G.node(node)['longitude']})
-    # # print(coords)
-    #
+    add_penalties(G)
+
+    print('edges', G.number_of_edges())
+    print('nodes', G.number_of_nodes())
+
+    start_time = time.time()
+    print(get_shortest_path(G, 4641, 12045))
+    # path = nx.shortest_path(G, 4641, 12045, weight='time')
+    print("--- %s seconds ---" % (time.time() - start_time))
+    # print(list(path))
+
+
+

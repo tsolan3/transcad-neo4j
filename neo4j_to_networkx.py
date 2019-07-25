@@ -10,6 +10,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import gmplot
 
+from utils import get_nodes_by_attr_value
+
 
 def connect_graph():
     graph = Graph("http://localhost:7474/db/data/", user='neo4j', password='119678Qq')
@@ -101,27 +103,85 @@ def get_penalties_data():
 
 
 def add_penalties(graph):
+        #  получаем все координатные узлы
+        # penalties = get_penalties_data()  # данные о штрафах из файла
+
+        coordinate_nodes = [(x, y) for x, y in graph.nodes(data=True) if y['type'] == 'coord']
+
+        # для каждой координатной точки ищем входящие и выходящие ребра и составляем пары
+        for node in coordinate_nodes:
+            in_edges = list(graph.in_edges(node[0], data=True))[:]
+            out_edges = list(graph.out_edges(node[0], data=True))[:]
+            edge_pairs = list(itertools.product(in_edges, out_edges))  # находим пары ребер
+
+            # если у точки нет входящих/выходящих потоков (т.е. нет пар ребер)
+            edge_pair_id = 1
+            if not in_edges:
+                graph.add_node(f'{node[0]}_out_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+
+                for out_edge in out_edges:
+                    graph.add_edge(f'{node[0]}_out_{edge_pair_id}', out_edge[1])
+                    graph.remove_edge(out_edge[0], out_edge[1])
+                continue
+
+            elif not out_edges:
+                graph.add_node(f'{node[0]}_in_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+                for out_edge in out_edges:
+                    graph.add_edge(f'{node[0]}_out_{edge_pair_id}', out_edge[0])
+                    graph.remove_edge(out_edge[0], out_edge[1])
+                continue
+
+            for edge_pair in edge_pairs:
+                edge_pair_id += 1
+
+                # это точно делаем
+                graph.add_node(f'{node[0]}_in_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+                graph.add_node(f'{node[0]}_out_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+                #             graph.add_edge(f'{node[0]}_in_{edge_pair_id}', f'{node[0]}_out_{edge_pair_id}',
+                #                            time=1.5, type='penalty_edge') # штрафное ребро
+                #             graph.add_edge(edge_pair[0][0], f'{node[0]}_in_{edge_pair_id}', **edge_pair[0][2])
+                #             graph.add_edge(f'{node[0]}_out_{edge_pair_id}', edge_pair[1][1], **edge_pair[1][2])
+
+                # ТЕПЕРЬ НУЖНО
+
+
+                #         graph.remove_node(node[0])
+
+                #     for node in coordinate_nodes:
+                #         graph.remove_node(node[0])
+                #         graph.add_node(node[0], **node[1])
+
+
+def add_penalties(graph):
+
     penalties = get_penalties_data()  # данные о штрафах из файла
+    # coordinate_nodes = get_nodes_by_attr_value(graph, key='type', value='coord')
+
     coordinate_nodes = [(x, y) for x, y in graph.nodes(data=True) if y['type'] == 'coord']
 
     for node in coordinate_nodes:
         in_edges = graph.in_edges(node[0], data=True)  # для каждой координатной точки ищем входящие и выходящие ребра
         out_edges = graph.out_edges(node[0], data=True)
         edge_pairs = list(itertools.product(in_edges, out_edges))  # находим пары ребер
+
         edge_pair_id = 0
         for edge_pair in edge_pairs:
             edge_pair_id += 1
             in_edge_link_type = edge_pair[0][2]['link_type_id']
             out_edge_link_type = edge_pair[1][2]['link_type_id']
+
             for data in penalties:
                 if [in_edge_link_type, out_edge_link_type] == [data['link_type_id_1'], data['link_type_id_2']]:
                         # and data['normal_penalty'] != 0:
+
                     graph.add_node(f'{node[0]}_in_{edge_pair_id}', node_pk=node[0], type='penalty_node')
                     graph.add_node(f'{node[0]}_out_{edge_pair_id}', node_pk=node[0], type='penalty_node')
+
                     graph.add_edge(f'{node[0]}_in_{edge_pair_id}', f'{node[0]}_out_{edge_pair_id}',
                                    time=data['normal_penalty'], type='penalty_edge')
                     graph.add_edge(edge_pair[0][0], f'{node[0]}_{edge_pair_id}_1', **edge_pair[0][2])
                     graph.add_edge(f'{node[0]}_{edge_pair_id}_2', edge_pair[1][1], **edge_pair[1][2])
+
         graph.remove_node(node[0])
     # pprint(list(graph.edges(data=True)))
 
@@ -145,6 +205,8 @@ def get_shortest_path(graph, node_pk_from, node_pk_to):
 if __name__ == '__main__':
     neo4j_graph = connect_graph()
     G = nx.MultiDiGraph()
+
+
     add_nodes(G, get_nodes_from_db(neo4j_graph))
     add_rels(G, get_rels_from_db(neo4j_graph))
 
@@ -156,11 +218,11 @@ if __name__ == '__main__':
     print('edges', G.number_of_edges())
     print('nodes', G.number_of_nodes())
 
-    start_time = time.time()
-    print(get_shortest_path(G, 4641, 12045))
-    # path = nx.shortest_path(G, 4641, 12045, weight='time')
-    print("--- %s seconds ---" % (time.time() - start_time))
-    # print(list(path))
+    # start_time = time.time()
+    # print(get_shortest_path(G, 4641, 12045))
+    # # path = nx.shortest_path(G, 4641, 12045, weight='time')
+    # print("--- %s seconds ---" % (time.time() - start_time))
+    # # print(list(path))
 
 
 

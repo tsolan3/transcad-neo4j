@@ -1,7 +1,6 @@
 import networkx as nx
 import time
 
-
 def get_json_data_nodes():
     with open('transcad_data/SrtLinks.geo', 'r') as f:
         json_data = []
